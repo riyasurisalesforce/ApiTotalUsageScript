@@ -8,7 +8,7 @@ using Salesforce CLI commands for authentication and querying.
 Prerequisites:
 1. Python 3.6+
 2. Salesforce CLI installed and configured
-3. Salesforce Connected App with JWT authentication
+3. Salesforce External Client App (ECA) with JWT authentication
 4. Private key file for JWT authentication
 
 Usage:

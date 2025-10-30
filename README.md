@@ -9,7 +9,7 @@ This tool automates the extraction of API usage metrics from Salesforce Event Lo
 ## Features
 
 - **Automated Authentication**: Uses JWT flow via Salesforce CLI
-- **Event Log File Processing**: Queries and downloads ApiTotalUsage event logs
+- **Event Log File Processing**: Queries and downloads ApiTotalUsage event logs for the previous calendar day (midnight to midnight UTC)
 - **Streaming CSV Export**: Efficiently streams large CSV files to disk
 - **Comprehensive Logging**: Detailed execution logs for troubleshooting
 - **Organized Output**: Separate directories for logs and CSV files
@@ -24,7 +24,7 @@ This tool automates the extraction of API usage metrics from Salesforce Event Lo
 - **Salesforce CLI** (sf command)
 
 ### Salesforce Setup
-- **Connected App** with JWT authentication enabled
+- **External Client App (ECA)** with JWT authentication enabled
 - **Private key file** for JWT signing
 - **User permissions** to access Event Log Files
 - **Org alias** configured in Salesforce CLI (required for script operation)
@@ -33,18 +33,15 @@ This tool automates the extraction of API usage metrics from Salesforce Event Lo
 The script uses only standard Python libraries:
 - `sys`, `json`, `logging`, `subprocess`, `argparse`, `os`
 - `datetime`, `pathlib`, `typing`
-- `requests` (install with: `pip install requests`)
+- `requests` (install with: `pip install -r requirements.txt`)
 
 ## Installation
 
-1. **Clone or download the script:**
-   ```bash
-   curl -O https://raw.githubusercontent.com/.../extract_total_usage_calls.py
-   ```
+1. **Clone or download the repository**
 
 2. **Install dependencies:**
    ```bash
-   pip install requests
+   pip install -r requirements.txt
    ```
 
 3. **Install Salesforce CLI:**
@@ -60,29 +57,45 @@ The script uses only standard Python libraries:
 
 ## Configuration
 
-### Connected App Setup
+### External Client App (ECA) Setup
 
-1. **Create Connected App in Salesforce:**
-    - Setup → App Manager → New Connected App
-    - Enable OAuth Settings
-    - Enable "Use digital signatures"
-    - Upload your certificate
-    - Add OAuth scopes: `api`, `refresh_token`
+**Note**: Salesforce recommends using External Client Apps (ECAs) for enhanced security and modern authentication flows. For more details, see the [Salesforce JWT Flow documentation](https://developer.salesforce.com/docs/atlas.en-us.sfdx_dev.meta/sfdx_dev/sfdx_dev_auth_jwt_flow.htm).
 
-2. **Generate Private Key:**
+1. **Generate Private Key and Certificate First:**
    ```bash
-   # Generate private key
+   # Generate private key (keep this secure - never share it)
    openssl genrsa -out server.key 2048
 
-   # Generate certificate
+   # Generate self-signed certificate (this will be uploaded to Salesforce)
    openssl req -new -x509 -key server.key -out server.crt -days 365
+   
+   # Set secure permissions on private key
+   chmod 600 server.key
    ```
+
+   **Important - Understanding the Two Files:**
+   - **`server.crt`** (Certificate): Upload this to Salesforce during ECA setup (one-time)
+   - **`server.key`** (Private Key): Use this at runtime with `--jwt-key-file` parameter when running commands (every execution)
+
+2. **Create External Client App in Salesforce:**
+   
+   For detailed steps, see the [official Salesforce documentation](https://developer.salesforce.com/docs/atlas.en-us.sfdx_dev.meta/sfdx_dev/sfdx_dev_auth_connected_app.htm).
+   
+    - Setup → App Manager → New External Client App
+    - Enable OAuth Settings
+    - Enable "Use digital signatures"
+    - Upload the `server.crt` certificate file (generated in step 1)
+    - Add OAuth scopes:
+      - **Manage user data via APIs (api)**
+      - **Manage user data via Web browsers (web)**
+      - **Perform requests at any time (refresh_token, offline_access)**
+    - Save and note the **Consumer Key** (Client ID) for later use
 
 3. **Configure User Permissions:**
     - Assign "API Only User" or appropriate profile
     - Grant "View Event Log Files" permission
 
-### 4. Set Up Org Alias (Required)
+### Set Up Org Alias (Required)
 
 **Important**: The script requires an org alias to be configured in Salesforce CLI. This alias is used for all SF CLI commands.
 
@@ -120,7 +133,7 @@ python3 extract_total_usage_calls.py \
 
 | Parameter | Description | Required | Example |
 |-----------|-------------|----------|---------|
-| `--client-id` | Connected App Consumer Key | Yes | `3MVG9A2kN3Bn17hs...` |
+| `--client-id` | ECA Consumer Key (Client ID) | Yes | `3MVG9A2kN3Bn17hs...` |
 | `--username` | Salesforce username | Yes | `user@company.com` |
 | `--jwt-key-file` | Path to JWT private key file | Yes | `/path/to/server.key` |
 | `--instance-url` | Salesforce instance URL | Yes | `https://login.salesforce.com` |
@@ -173,7 +186,7 @@ your-output-directory/
 ```csv
 EVENT_TYPE,TIMESTAMP,REQUEST_ID,ORGANIZATION_ID,USER_ID,API_FAMILY,API_VERSION,API_RESOURCE,CLIENT_NAME,HTTP_METHOD,CLIENT_IP,COUNTS_AGAINST_API_LIMIT,CONNECTED_APP_ID,ENTITY_NAME,STATUS_CODE,CONNECTED_APP_NAME,USER_NAME,TIMESTAMP_DERIVED
 ApiTotalUsage,20251009183437.652,xxxxxxxxxxxxxxxxxxxxx,00Dxxxxxxxxxxxxxxxxx,005xxxxxxxxxxxxxxxxx,SOAP,64.0,login,,xxx.xxx.xxx.xxx,1,, ,200,,user@company.com,2025-10-09T18:34:37.652Z
-ApiTotalUsage,20251009184000.123,xxxxxxxxxxxxxxxxxxxxx,00Dxxxxxxxxxxxxxxxxx,005xxxxxxxxxxxxxxxxx,REST,64.0,/v64.0/sobjects/Account,MyConnectedApp,GET,xxx.xxx.xxx.xxx,1,3MVxxxxxxxxxxxxxxxxx,Account,200,MyApp,user@company.com,2025-10-09T18:40:00.123Z
+ApiTotalUsage,20251009184000.123,xxxxxxxxxxxxxxxxxxxxx,00Dxxxxxxxxxxxxxxxxx,005xxxxxxxxxxxxxxxxx,REST,64.0,/v64.0/sobjects/Account,MyECA,GET,xxx.xxx.xxx.xxx,1,3MVxxxxxxxxxxxxxxxxx,Account,200,MyApp,user@company.com,2025-10-09T18:40:00.123Z
 ```
 
 ## Automation
@@ -223,10 +236,10 @@ python3 "$SCRIPT_DIR/extract_total_usage_calls.py" \
 ERROR: Authentication failed: JWT validation failed
 ```
 **Solutions:**
-- Verify Connected App configuration
-- Check private key file permissions
-- Ensure certificate is uploaded to Connected App
-- Verify username and client ID
+- Verify External Client App (ECA) configuration
+- Check private key file permissions (`server.key`)
+- Ensure the certificate (`server.crt`) is uploaded to the ECA
+- Verify username and client ID match your ECA settings
 
 #### No Event Log Files Found
 ```
@@ -260,7 +273,7 @@ ERROR: No org configuration found for name my-org
 ERROR: Output directory is not writable: /path/to/output
 ```
 **Solutions:**
-- Check directory permissions: `chmod 755 /path/to/output`
+- Verify the output directory path is correct and accessible
 - Verify disk space availability
 - Ensure parent directories exist
 
@@ -301,10 +314,13 @@ find /path/to/output/logs -name "*.log" -mtime +30 -delete
 
 ## Security Considerations
 
-- **Private Key Protection**: Store JWT private keys securely with restricted permissions (600)
-- **Credential Management**: Use environment variables or secure credential stores
+- **Private Key Protection**: Store JWT private keys securely 
+  ```bash
+  chmod 600 /path/to/server.key
+  ```
+- **Credential Management**: Use environment variables or secure credential stores for sensitive data
 - **Network Security**: Ensure secure transmission of authentication tokens
-- **Access Control**: Limit file system permissions on output directories
+- **Access Control**: Ensure the output directory has appropriate file system permissions
 
 ## API Usage Data Analysis
 
@@ -317,7 +333,7 @@ find /path/to/output/logs -name "*.log" -mtime +30 -delete
 ### Data Fields Explained
 - **API_FAMILY**: Type of API (REST, SOAP, Bulk, etc.)
 - **COUNTS_AGAINST_API_LIMIT**: Whether call counts against daily limits
-- **CLIENT_NAME**: Connected App or client identifier
+- **CLIENT_NAME**: External Client App or client identifier
 - **ENTITY_NAME**: Salesforce object accessed (Account, Contact, etc.)
 - **HTTP_METHOD**: REST operation (GET, POST, PUT, DELETE)
 
@@ -329,6 +345,6 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 ## Support
 
 For issues and questions:
-1. Check the troubleshooting section
-2. Review Salesforce CLI documentation
-3. Submit an issue on the project repository
+1. Check the troubleshooting section above
+2. Review [Salesforce CLI documentation](https://developer.salesforce.com/docs/atlas.en-us.sfdx_cli_reference.meta/sfdx_cli_reference/)
+3. Review [Salesforce Event Log File documentation](https://developer.salesforce.com/docs/atlas.en-us.object_reference.meta/object_reference/sforce_api_objects_eventlogfile.htm)
