@@ -181,7 +181,7 @@ class SalesforceAPITotalUsageExtractor:
             if not all([self.access_token, self.api_version, self.actual_instance_url]):
                 raise Exception("Failed to extract required org information")
 
-            self.logger.info(f"Using API version: v{self.api_version}")
+            self.logger.info(f"Salesforce org version: v{self.api_version}")
             self.logger.info("Authentication completed successfully")
 
         except Exception as e:
