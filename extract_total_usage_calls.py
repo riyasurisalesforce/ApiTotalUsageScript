@@ -1,3 +1,4 @@
+
 #!/usr/bin/env python3
 """
 API Total Usage CSV Extractor
@@ -55,7 +56,10 @@ class SalesforceAPITotalUsageExtractor:
         # Validate configuration
         self.validate_config()
 
-        # Setup logging immediately
+        # Determine the target date for the query
+        self.target_date = datetime.utcnow().date() - timedelta(days=1)
+
+        # Setup logging with the correct date from the start
         self.setup_logging()
 
         # Will be populated after authentication
@@ -69,8 +73,8 @@ class SalesforceAPITotalUsageExtractor:
         logs_dir = self.output_dir / "logs"
         logs_dir.mkdir(exist_ok=True)
 
-        current_timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        self.log_file = logs_dir / f"extract_usage_{current_timestamp}.log"
+        log_date_str = self.target_date.strftime('%Y%m%d')
+        self.log_file = logs_dir / f"extract_usage_{log_date_str}.log"
 
         logging.basicConfig(
             level=logging.INFO,
@@ -83,41 +87,7 @@ class SalesforceAPITotalUsageExtractor:
         )
         self.logger = logging.getLogger(__name__)
 
-    def update_log_filename_with_eventlogfile_date(self, event_date):
-        """Update log filename to use EventLogFile date and move content."""
-        # Extract date from EventLog date
-        log_date_yyyymmdd = ''.join(filter(str.isdigit, event_date))[:8]
 
-        # Create new log filename with EventLog date
-        logs_dir = self.output_dir / "logs"
-        new_log_file = logs_dir / f"extract_usage_{log_date_yyyymmdd}.log"
-
-        # Only update if the filename would be different
-        if self.log_file != new_log_file:
-            # Close current handler
-            for handler in self.logger.handlers[:]:
-                handler.close()
-                self.logger.removeHandler(handler)
-
-            # Move the temporary log file to the proper name
-            if self.log_file.exists():
-                self.log_file.rename(new_log_file)
-
-            # Update log file path
-            self.log_file = new_log_file
-
-            # Setup new handler with the renamed file
-            logging.basicConfig(
-                level=logging.INFO,
-                format='[%(asctime)s] %(message)s',
-                datefmt='%Y-%m-%d %H:%M:%S',
-                handlers=[
-                    logging.FileHandler(self.log_file),
-                    logging.StreamHandler()  # This prints to console
-                ],
-                force=True
-            )
-            self.logger = logging.getLogger(__name__)
 
 
     def validate_config(self):
@@ -220,10 +190,9 @@ class SalesforceAPITotalUsageExtractor:
 
     def query_eventlog_metadata(self) -> List[Dict]:
         """Query EventLogFile metadata using SF CLI."""
-        # Calculate date range for previous day (midnight to midnight UTC)
-        yesterday = datetime.utcnow().date() - timedelta(days=1)
-        start_date = f"{yesterday}T00:00:00.000Z"
-        end_date = f"{yesterday + timedelta(days=1)}T00:00:00.000Z"
+        # Use the pre-calculated target date for the query
+        start_date = f"{self.target_date}T00:00:00.000Z"
+        end_date = f"{self.target_date + timedelta(days=1)}T00:00:00.000Z"
 
         self.logger.info(f"Querying Event Log Files for date range: {start_date} to {end_date}")
 
@@ -336,13 +305,12 @@ class SalesforceAPITotalUsageExtractor:
             # Query EventLogFile metadata using SF CLI
             records = self.query_eventlog_metadata()
 
+            # Always print the log file path for user reference
+            print(f"Log file for date {self.target_date.strftime('%Y-%m-%d')}: {self.log_file}")
+
             if not records:
                 self.logger.info("No EventLogFile records found for the specified date range. Exiting.")
                 return
-
-            # Update log filename to include EventLogFile date
-            self.update_log_filename_with_eventlogfile_date(records[0]['LogDate'])
-            print(f"Log file: {self.log_file}")
 
             # Log extraction details
             self.logger.info("Starting API Total Usage extraction with EventLog data...")
@@ -365,12 +333,13 @@ class SalesforceAPITotalUsageExtractor:
 def main():
     """Main entry point."""
     parser = argparse.ArgumentParser(description='Extract Salesforce API Total Usage data from Event Log Files')
-    parser.add_argument('--client-id', required=True, help='Salesforce Connected App Client ID')
-    parser.add_argument('--username', required=True, help='Salesforce username')
-    parser.add_argument('--jwt-key-file', required=True, help='Path to JWT private key file')
-    parser.add_argument('--instance-url', required=True, help='Salesforce instance my domain URL')
-    parser.add_argument('--org-alias', required=True, help='Org alias for Salesforce CLI')
-    parser.add_argument('--output-dir', required=True, help='Output directory for CSV files')
+    required_args = parser.add_argument_group('required arguments')
+    required_args.add_argument('--client-id', required=True, help='Salesforce Connected App Client ID')
+    required_args.add_argument('--username', required=True, help='Salesforce username')
+    required_args.add_argument('--jwt-key-file', required=True, help='Path to JWT private key file')
+    required_args.add_argument('--instance-url', required=True, help='Salesforce instance my domain URL')
+    required_args.add_argument('--org-alias', required=True, help='Org alias for Salesforce CLI')
+    required_args.add_argument('--output-dir', required=True, help='Output directory for CSV files')
 
     args = parser.parse_args()
 
