@@ -334,7 +334,7 @@ def main():
     """Main entry point."""
     parser = argparse.ArgumentParser(description='Extract Salesforce API Total Usage data from Event Log Files')
     required_args = parser.add_argument_group('required arguments')
-    required_args.add_argument('--client-id', required=True, help='Salesforce Connected App Client ID')
+    required_args.add_argument('--client-id', required=True, help='Salesforce External Client App ID')
     required_args.add_argument('--username', required=True, help='Salesforce username')
     required_args.add_argument('--jwt-key-file', required=True, help='Path to JWT private key file')
     required_args.add_argument('--instance-url', required=True, help='Salesforce instance my domain URL')
